@@ -114,18 +114,34 @@ if uploaded_file is not None:
                         # Процентное распределение
                         with col1:
                             st.subheader("Процентное распределение")
+                            
+                            # Создаем DataFrame для pie chart
+                            pie_data = pd.DataFrame({
+                                'sentiment': sentiment_counts.index,
+                                'count': sentiment_counts.values
+                            })
+                            
                             fig_pie = px.pie(
-                                values=sentiment_counts.values,
-                                names=sentiment_counts.index,
-                                color=sentiment_counts.index,
+                                pie_data,
+                                values='count',  # Используем абсолютные значения
+                                names='sentiment',
+                                color='sentiment',
                                 color_discrete_map={
                                     'positive': '#2E8B57',
                                     'negative': '#DC143C', 
                                     'neutral': '#FFD700'
-                                }
+                                },
+                                hole=0.3  # Добавляем отверстие для донут chart (опционально)
                             )
+                            
+                            # Добавляем проценты в подписи
+                            fig_pie.update_traces(
+                                textinfo='percent+label',
+                                hovertemplate='<b>%{label}</b><br>Количество: %{value}<br>Процент: %{percent}'
+                            )
+                            
                             st.plotly_chart(fig_pie, use_container_width=True)
-                        
+                                                
                         # Абсолютное распределение
                         with col2:
                             st.subheader("Абсолютное распределение")
