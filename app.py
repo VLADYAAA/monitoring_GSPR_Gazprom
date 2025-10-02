@@ -98,120 +98,138 @@ if uploaded_file is not None:
             # 2. Детальная статистика по каждому продукту/услуге
             st.header("📊 Анализ по продуктам/услугам")
             
+        
+
             for topic in topics:
                 with st.expander(f"🔍 {topic}", expanded=False):
                     topic_data = filtered_df[filtered_df["topic"] == topic]
                     total_reviews = len(topic_data)
                     
                     if total_reviews > 0:
-                        # Процентное и абсолютное распределение
+                        # Получаем распределение тональностей
                         sentiment_counts = topic_data["sentiment"].value_counts()
-                        sentiment_percent = (sentiment_counts / total_reviews * 100).round(1)
+                        
+                        # Создаем правильные данные для диаграмм
+                        chart_data = []
+                        for sentiment in ['positive', 'neutral', 'negative']:
+                            count = sentiment_counts.get(sentiment, 0)
+                            percent = round((count / total_reviews) * 100, 1) if total_reviews > 0 else 0
+                            chart_data.append({
+                                'sentiment': sentiment,
+                                'count': count,
+                                'percent': percent,
+                                'label': f"{sentiment}\n{count} ({percent}%)"
+                            })
+                        
+                        chart_df = pd.DataFrame(chart_data)
                         
                         col1, col2, col3 = st.columns(3)
                         
-                        # ПРАВИЛЬНАЯ КРУГОВАЯ ДИАГРАММА
+                        # КРУГОВАЯ ДИАГРАММА - ПРОЦЕНТНОЕ РАСПРЕДЕЛЕНИЕ
                         with col1:
                             st.subheader("Процентное распределение")
                             
-                            # Создаем данные для диаграммы
-                            pie_data = []
-                            for sentiment in ['positive', 'neutral', 'negative']:
-                                count = sentiment_counts.get(sentiment, 0)
-                                percent = sentiment_percent.get(sentiment, 0)
-                                if count > 0:
-                                    pie_data.append({
-                                        'sentiment': sentiment,
-                                        'count': count,
-                                        'percent': percent
-                                    })
+                            # Фильтруем только те тональности, которые есть в данных
+                            pie_df = chart_df[chart_df['count'] > 0]
                             
-                            if pie_data:
-                                pie_df = pd.DataFrame(pie_data)
-                                
+                            if len(pie_df) > 0:
                                 fig_pie = px.pie(
                                     pie_df,
                                     values='count',
                                     names='sentiment',
                                     color='sentiment',
                                     color_discrete_map={
-                                        'positive': '#2E8B57',
-                                        'negative': '#DC143C', 
-                                        'neutral': '#FFD700'
+                                        'positive': '#00FF00',
+                                        'negative': '#FF0000', 
+                                        'neutral': '#FFFF00'
                                     },
-                                    hole=0.3
+                                    hole=0.4
                                 )
                                 
+                                # Настраиваем отображение
                                 fig_pie.update_traces(
                                     textinfo='percent+label',
+                                    textposition='inside',
+                                    insidetextorientation='radial',
                                     hovertemplate='<b>%{label}</b><br>Количество: %{value}<br>Процент: %{percent}'
+                                )
+                                
+                                fig_pie.update_layout(
+                                    showlegend=True,
+                                    legend=dict(orientation="v", yanchor="top", y=1, xanchor="left", x=1.1)
                                 )
                                 
                                 st.plotly_chart(fig_pie, use_container_width=True)
                             else:
-                                st.info("Нет данных для отображения")
+                                st.info("Нет данных для диаграммы")
                         
-                        # ПРАВИЛЬНАЯ СТОЛБЧАТАЯ ДИАГРАММА
+                        # СТОЛБЧАТАЯ ДИАГРАММА - АБСОЛЮТНОЕ РАСПРЕДЕЛЕНИЕ
                         with col2:
                             st.subheader("Абсолютное распределение")
                             
-                            # Создаем данные для столбчатой диаграммы
-                            bar_data = []
-                            for sentiment in ['positive', 'neutral', 'negative']:
-                                count = sentiment_counts.get(sentiment, 0)
-                                bar_data.append({
-                                    'sentiment': sentiment,
-                                    'count': count
-                                })
-                            
-                            bar_df = pd.DataFrame(bar_data)
-                            
                             fig_bar = px.bar(
-                                bar_df,
+                                chart_df,
                                 x='sentiment',
                                 y='count',
                                 color='sentiment',
                                 color_discrete_map={
-                                    'positive': '#2E8B57',
-                                    'negative': '#DC143C', 
-                                    'neutral': '#FFD700'
+                                    'positive': '#00FF00',
+                                    'negative': '#FF0000', 
+                                    'neutral': '#FFFF00'
                                 },
                                 text='count'
+                            )
+                            
+                            # Настраиваем внешний вид
+                            fig_bar.update_traces(
+                                texttemplate='%{text}',
+                                textposition='outside',
+                                marker_line_color='black',
+                                marker_line_width=1
                             )
                             
                             fig_bar.update_layout(
                                 showlegend=False,
                                 xaxis_title="Тональность",
                                 yaxis_title="Количество отзывов",
-                                yaxis=dict(range=[0, max(bar_df['count'].max() + 1, 5)])
+                                yaxis=dict(range=[0, max(chart_df['count'].max() + 2, 5)]),
+                                plot_bgcolor='white'
                             )
                             
-                            fig_bar.update_traces(
-                                texttemplate='%{text}',
-                                textposition='outside'
-                            )
+                            fig_bar.update_xaxes(showgrid=False)
+                            fig_bar.update_yaxes(showgrid=True, gridcolor='lightgray')
                             
                             st.plotly_chart(fig_bar, use_container_width=True)
                         
-                        # СТАТИСТИКА
+                        # СТАТИСТИКА В ЦИФРАХ
                         with col3:
                             st.subheader("Статистика")
-                            st.metric("Всего отзывов", total_reviews)
                             
-                            for sentiment in ['positive', 'neutral', 'negative']:
-                                count = sentiment_counts.get(sentiment, 0)
-                                percent = sentiment_percent.get(sentiment, 0)
+                            # Общее количество
+                            st.metric(
+                                label="Всего отзывов",
+                                value=total_reviews
+                            )
+                            
+                            st.write("---")
+                            
+                            # Детальная статистика по тональностям
+                            for sentiment_data in chart_data:
+                                sentiment = sentiment_data['sentiment']
+                                count = sentiment_data['count']
+                                percent = sentiment_data['percent']
                                 
-                                # Выбираем иконку в зависимости от тональности
-                                icon = {
+                                # Иконки для разных тональностей
+                                icon_map = {
                                     'positive': '🟢',
-                                    'neutral': '⚪', 
+                                    'neutral': '⚪',
                                     'negative': '🔴'
-                                }.get(sentiment, '⚪')
+                                }
                                 
                                 st.metric(
-                                    f"{icon} {sentiment.capitalize()}",
-                                    f"{count} ({percent}%)"
+                                    label=f"{icon_map.get(sentiment, '⚪')} {sentiment.capitalize()}",
+                                    value=f"{count} отзывов",
+                                    delta=f"{percent}%"
                                 )
                         
                         # КЛЮЧЕВЫЕ АСПЕКТЫ
