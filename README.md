@@ -1,4 +1,4 @@
-```markdown
+
 # 🏦 Bank Review Analysis API
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-009688?logo=fastapi)](https://fastapi.tiangolo.com)
