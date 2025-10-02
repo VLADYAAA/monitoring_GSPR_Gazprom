@@ -6,11 +6,12 @@ from plotly.subplots import make_subplots
 import requests
 import json
 from datetime import datetime, timedelta
+import random
 
 # Настройки
 st.set_page_config(page_title="Клиентские настроения", layout="wide")
 st.image("orig.png", width=120)
-st.title("Дашboard клиентских настроений и проблем")
+st.title("Дашборд клиентских настроений и проблем")
 
 # Загрузка данных пользователем
 uploaded_file = st.file_uploader("Загрузите JSON с отзывами", type="json")
@@ -23,12 +24,10 @@ if uploaded_file is not None:
         reviews_df = pd.DataFrame(reviews_data["data"])
         
         # Добавляем случайные даты для демонстрации временного интервала
-        # В реальном приложении даты должны быть в исходных данных
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 5, 31)
         date_range = (end_date - start_date).days
         
-        import random
         reviews_df['date'] = [start_date + timedelta(days=random.randint(0, date_range)) 
                              for _ in range(len(reviews_df))]
         
@@ -62,7 +61,7 @@ if uploaded_file is not None:
             # Боковая панель с фильтрами
             st.sidebar.header("🔧 Фильтры")
             
-            # 3. Временной интервал
+            # Временной интервал
             min_date = merged_df["date"].min().date()
             max_date = merged_df["date"].max().date()
             
@@ -111,103 +110,145 @@ if uploaded_file is not None:
                         
                         col1, col2, col3 = st.columns(3)
                         
-                        # Процентное распределение
+                        # ПРАВИЛЬНАЯ КРУГОВАЯ ДИАГРАММА
                         with col1:
                             st.subheader("Процентное распределение")
                             
-                            # Создаем DataFrame для pie chart
-                            pie_data = pd.DataFrame({
-                                'sentiment': sentiment_counts.index,
-                                'count': sentiment_counts.values
-                            })
+                            # Создаем данные для диаграммы
+                            pie_data = []
+                            for sentiment in ['positive', 'neutral', 'negative']:
+                                count = sentiment_counts.get(sentiment, 0)
+                                percent = sentiment_percent.get(sentiment, 0)
+                                if count > 0:
+                                    pie_data.append({
+                                        'sentiment': sentiment,
+                                        'count': count,
+                                        'percent': percent
+                                    })
                             
-                            fig_pie = px.pie(
-                                pie_data,
-                                values='count',  # Используем абсолютные значения
-                                names='sentiment',
-                                color='sentiment',
-                                color_discrete_map={
-                                    'positive': '#2E8B57',
-                                    'negative': '#DC143C', 
-                                    'neutral': '#FFD700'
-                                },
-                                hole=0.3  # Добавляем отверстие для донут chart (опционально)
-                            )
-                            
-                            # Добавляем проценты в подписи
-                            fig_pie.update_traces(
-                                textinfo='percent+label',
-                                hovertemplate='<b>%{label}</b><br>Количество: %{value}<br>Процент: %{percent}'
-                            )
-                            
-                            st.plotly_chart(fig_pie, use_container_width=True)
-                                                
-                        # Абсолютное распределение
-                        # Абсолютное распределение
+                            if pie_data:
+                                pie_df = pd.DataFrame(pie_data)
+                                
+                                fig_pie = px.pie(
+                                    pie_df,
+                                    values='count',
+                                    names='sentiment',
+                                    color='sentiment',
+                                    color_discrete_map={
+                                        'positive': '#2E8B57',
+                                        'negative': '#DC143C', 
+                                        'neutral': '#FFD700'
+                                    },
+                                    hole=0.3
+                                )
+                                
+                                fig_pie.update_traces(
+                                    textinfo='percent+label',
+                                    hovertemplate='<b>%{label}</b><br>Количество: %{value}<br>Процент: %{percent}'
+                                )
+                                
+                                st.plotly_chart(fig_pie, use_container_width=True)
+                            else:
+                                st.info("Нет данных для отображения")
+                        
+                        # ПРАВИЛЬНАЯ СТОЛБЧАТАЯ ДИАГРАММА
                         with col2:
                             st.subheader("Абсолютное распределение")
                             
-                            # Создаем DataFrame для bar chart
-                            bar_data = pd.DataFrame({
-                                'sentiment': sentiment_counts.index,
-                                'count': sentiment_counts.values
-                            })
+                            # Создаем данные для столбчатой диаграммы
+                            bar_data = []
+                            for sentiment in ['positive', 'neutral', 'negative']:
+                                count = sentiment_counts.get(sentiment, 0)
+                                bar_data.append({
+                                    'sentiment': sentiment,
+                                    'count': count
+                                })
+                            
+                            bar_df = pd.DataFrame(bar_data)
                             
                             fig_bar = px.bar(
-                                bar_data,
+                                bar_df,
                                 x='sentiment',
                                 y='count',
-                                labels={'sentiment': 'Тональность', 'count': 'Количество'},
                                 color='sentiment',
                                 color_discrete_map={
                                     'positive': '#2E8B57',
                                     'negative': '#DC143C', 
                                     'neutral': '#FFD700'
                                 },
-                                text='count'  # Показываем значения на столбцах
+                                text='count'
                             )
                             
                             fig_bar.update_layout(
                                 showlegend=False,
                                 xaxis_title="Тональность",
-                                yaxis_title="Количество отзывов"
+                                yaxis_title="Количество отзывов",
+                                yaxis=dict(range=[0, max(bar_df['count'].max() + 1, 5)])
                             )
                             
-                            # Добавляем значения на столбцы
-                            fig_bar.update_traces(texttemplate='%{text}', textposition='outside')
+                            fig_bar.update_traces(
+                                texttemplate='%{text}',
+                                textposition='outside'
+                            )
                             
                             st.plotly_chart(fig_bar, use_container_width=True)
                         
-                        # Статистика
+                        # СТАТИСТИКА
                         with col3:
                             st.subheader("Статистика")
                             st.metric("Всего отзывов", total_reviews)
+                            
                             for sentiment in ['positive', 'neutral', 'negative']:
                                 count = sentiment_counts.get(sentiment, 0)
                                 percent = sentiment_percent.get(sentiment, 0)
+                                
+                                # Выбираем иконку в зависимости от тональности
+                                icon = {
+                                    'positive': '🟢',
+                                    'neutral': '⚪', 
+                                    'negative': '🔴'
+                                }.get(sentiment, '⚪')
+                                
                                 st.metric(
-                                    f"{sentiment.capitalize()}",
+                                    f"{icon} {sentiment.capitalize()}",
                                     f"{count} ({percent}%)"
                                 )
                         
-                        # Аспекты продуктов (дополнительно)
+                        # КЛЮЧЕВЫЕ АСПЕКТЫ
                         st.subheader("📝 Ключевые аспекты")
                         
-                        # Пример извлечения аспектов из текста
                         positive_aspects = topic_data[topic_data["sentiment"] == "positive"]["text"].head(3)
                         negative_aspects = topic_data[topic_data["sentiment"] == "negative"]["text"].head(3)
+                        neutral_aspects = topic_data[topic_data["sentiment"] == "neutral"]["text"].head(3)
                         
-                        col4, col5 = st.columns(2)
+                        col4, col5, col6 = st.columns(3)
                         
                         with col4:
-                            st.write("**Что нравится:**")
-                            for text in positive_aspects:
-                                st.write(f"✅ {text}")
+                            if len(positive_aspects) > 0:
+                                st.write("**✅ Что нравится:**")
+                                for text in positive_aspects:
+                                    st.write(f"• {text}")
+                            else:
+                                st.write("**✅ Что нравится:**")
+                                st.write("Нет положительных отзывов")
                         
                         with col5:
-                            st.write("**Что не нравится:**")
-                            for text in negative_aspects:
-                                st.write(f"❌ {text}")
+                            if len(neutral_aspects) > 0:
+                                st.write("**⚪ Нейтральные отзывы:**")
+                                for text in neutral_aspects:
+                                    st.write(f"• {text}")
+                            else:
+                                st.write("**⚪ Нейтральные отзывы:**")
+                                st.write("Нет нейтральных отзывов")
+                        
+                        with col6:
+                            if len(negative_aspects) > 0:
+                                st.write("**❌ Что не нравится:**")
+                                for text in negative_aspects:
+                                    st.write(f"• {text}")
+                            else:
+                                st.write("**❌ Что не нравится:**")
+                                st.write("Нет отрицательных отзывов")
                     
                     else:
                         st.info("Нет отзывов по данной теме за выбранный период")
@@ -258,7 +299,7 @@ if uploaded_file is not None:
                                         name=f"{topic} - {sentiment}",
                                         mode='lines+markers',
                                         legendgroup=topic,
-                                        showlegend=(i == 1)  # Показывать легенду только для первого графика
+                                        showlegend=(i == 1)
                                     ),
                                     row=i, col=1
                                 )
@@ -297,7 +338,7 @@ if uploaded_file is not None:
                 st.subheader("📋 Сводная таблица динамики")
                 
                 pivot_table = time_data.groupby(['month', 'topic', 'sentiment']).size().unstack(fill_value=0)
-                st.dataframe(pivot_table.style.background_gradient(cmap='Blues'))
+                st.dataframe(pivot_table)
 
         else:
             st.error("Не удалось получить предсказания от API.")
