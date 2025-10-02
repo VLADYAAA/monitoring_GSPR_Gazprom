@@ -16,17 +16,6 @@ uploaded_file = st.file_uploader("Загрузите JSON с отзывами", 
 if uploaded_file is not None:
     try:
         reviews_data = json.load(uploaded_file)
-        reviews_df = pd.DataFrame(reviews_data)
-
-        # Добавляем колонку 'id', если её нет
-        if 'id' not in reviews_df.columns:
-            reviews_df['id'] = reviews_df.index + 1
-
-        # Преобразование даты
-        reviews_df["date"] = pd.to_datetime(reviews_df.get("date", datetime.now()), errors='coerce', utc=True)
-
-        # Подготовка данных для запроса к API
-        reviews_for_api = reviews_df[['id', 'text']].to_dict(orient='records')
 
         # Получение предсказаний через API
         def fetch_predictions(data):
@@ -38,7 +27,7 @@ if uploaded_file is not None:
                 st.error(f"Ошибка при запросе к API: {response.text}")
                 return None
 
-        predictions_data = fetch_predictions(reviews_for_api)
+        predictions_data = fetch_predictions(reviews_data)
 
         if predictions_data:
             # Преобразование предсказаний
