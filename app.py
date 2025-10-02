@@ -143,20 +143,39 @@ if uploaded_file is not None:
                             st.plotly_chart(fig_pie, use_container_width=True)
                                                 
                         # Абсолютное распределение
+                        # Абсолютное распределение
                         with col2:
                             st.subheader("Абсолютное распределение")
+                            
+                            # Создаем DataFrame для bar chart
+                            bar_data = pd.DataFrame({
+                                'sentiment': sentiment_counts.index,
+                                'count': sentiment_counts.values
+                            })
+                            
                             fig_bar = px.bar(
-                                x=sentiment_counts.index,
-                                y=sentiment_counts.values,
-                                labels={'x': 'Тональность', 'y': 'Количество'},
-                                color=sentiment_counts.index,
+                                bar_data,
+                                x='sentiment',
+                                y='count',
+                                labels={'sentiment': 'Тональность', 'count': 'Количество'},
+                                color='sentiment',
                                 color_discrete_map={
                                     'positive': '#2E8B57',
                                     'negative': '#DC143C', 
                                     'neutral': '#FFD700'
-                                }
+                                },
+                                text='count'  # Показываем значения на столбцах
                             )
-                            fig_bar.update_layout(showlegend=False)
+                            
+                            fig_bar.update_layout(
+                                showlegend=False,
+                                xaxis_title="Тональность",
+                                yaxis_title="Количество отзывов"
+                            )
+                            
+                            # Добавляем значения на столбцы
+                            fig_bar.update_traces(texttemplate='%{text}', textposition='outside')
+                            
                             st.plotly_chart(fig_bar, use_container_width=True)
                         
                         # Статистика
