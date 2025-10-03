@@ -45,7 +45,7 @@ if uploaded_file is not None:
 
         # Получение предсказаний через API
         def fetch_predictions(data):
-            url = "http://localhost:8000/predict"
+            url = "http://0.0.0.0:8000/predict"
             response = requests.post(url, json=data)
             if response.status_code == 200:
                 return response.json()
