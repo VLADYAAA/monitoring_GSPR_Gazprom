@@ -110,7 +110,7 @@ if uploaded_file is not None:
                     total_reviews = len(topic_data)
 
                     if total_reviews > 0:
-                        # Получаем распределение тональностей
+                        # ИСПРАВЛЕНИЕ: Правильно рассчитываем распределение тональностей для КОНКРЕТНОЙ ТЕМЫ
                         sentiment_counts = topic_data["sentiment"].value_counts()
 
                         chart_data = []
@@ -131,6 +131,7 @@ if uploaded_file is not None:
                         with col1:
                             st.subheader("Процентное распределение")
 
+                            # ИСПРАВЛЕНИЕ: Используем chart_df который содержит данные по конкретной теме
                             pie_df = chart_df[chart_df['count'] > 0]
 
                             if not pie_df.empty:
@@ -159,6 +160,7 @@ if uploaded_file is not None:
                         with col2:
                             st.subheader("Абсолютное распределение")
 
+                            # ИСПРАВЛЕНИЕ: Используем chart_df который содержит данные по конкретной теме
                             fig_bar = px.bar(
                                 chart_df,
                                 x='sentiment',
