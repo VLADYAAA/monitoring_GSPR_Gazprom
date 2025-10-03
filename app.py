@@ -36,26 +36,42 @@ if uploaded_file is not None:
         # Получение предсказаний через API
         def fetch_predictions(data):
             url = "http://localhost:8000/predict"
-            response = requests.post(url, json=data)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                st.error(f"Ошибка при запросе к API: {response.text}")
+            try:
+                response = requests.post(url, json=data, timeout=30)
+                if response.status_code == 200:
+                    return response.json()
+                else:
+                    st.error(f"Ошибка при запросе к API: {response.status_code} - {response.text}")
+                    return None
+            except requests.exceptions.RequestException as e:
+                st.error(f"Ошибка подключения к API: {e}")
                 return None
 
         predictions_data = fetch_predictions(reviews_data)
 
         if predictions_data:
+            # ДЕБАГ: Покажем что пришло от API
+            st.sidebar.write("📊 Данные от API:", predictions_data[:2])  # Покажем первые 2 элемента
+            
             # Преобразование предсказаний
             flat_data = []
             for pred in predictions_data:
+                # ДЕБАГ: Проверим структуру каждого предсказания
+                if len(pred["topics"]) != len(pred["sentiments"]):
+                    st.warning(f"Несоответствие тем и тональностей для ID {pred['id']}")
+                
                 for topic, sentiment in zip(pred["topics"], pred["sentiments"]):
                     flat_data.append({
                         "id": pred["id"],
                         "topic": topic,
                         "sentiment": sentiment
                     })
+            
             flat_df = pd.DataFrame(flat_data)
+            
+            # ДЕБАГ: Покажем уникальные значения тональностей
+            st.sidebar.write("🎭 Уникальные тональности:", flat_df["sentiment"].unique())
+            st.sidebar.write("🏷️ Уникальные темы:", flat_df["topic"].unique())
 
             # Объединение с отзывами
             merged_df = reviews_df.merge(flat_df, on="id", how="left")
@@ -110,11 +126,12 @@ if uploaded_file is not None:
                     total_reviews = len(topic_data)
 
                     if total_reviews > 0:
-                        # Получаем распределение тональностей
+                        # Получаем распределение тональностей (ИСПРАВЛЕНО - русские названия)
                         sentiment_counts = topic_data["sentiment"].value_counts()
 
                         chart_data = []
-                        for sentiment in ['positive', 'neutral', 'negative']:
+                        # ИСПРАВЛЕНО: используем русские названия тональностей
+                        for sentiment in ['положительно', 'нейтрально', 'отрицательно']:
                             count = sentiment_counts.get(sentiment, 0)
                             percent = round((count / total_reviews) * 100, 1) if total_reviews > 0 else 0
                             chart_data.append({
@@ -134,15 +151,16 @@ if uploaded_file is not None:
                             pie_df = chart_df[chart_df['count'] > 0]
 
                             if not pie_df.empty:
+                                # ИСПРАВЛЕНО: цветовая схема для русских названий
                                 fig_pie = px.pie(
                                     pie_df,
                                     values='count',
                                     names='sentiment',
                                     color='sentiment',
                                     color_discrete_map={
-                                        'positive': '#00CC66',
-                                        'negative': '#FF3333',
-                                        'neutral': '#FFCC00'
+                                        'положительно': '#00CC66',
+                                        'отрицательно': '#FF3333',
+                                        'нейтрально': '#FFCC00'
                                     },
                                     hole=0.4
                                 )
@@ -150,7 +168,6 @@ if uploaded_file is not None:
                                     textinfo='label+percent',
                                     hovertemplate='<b>%{label}</b><br>Количество: %{value}<br>Доля: %{percent}'
                                 )
-                                # Добавляем уникальный ключ
                                 st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{topic}_{i}")
                             else:
                                 st.info("Нет данных для диаграммы")
@@ -159,15 +176,16 @@ if uploaded_file is not None:
                         with col2:
                             st.subheader("Абсолютное распределение")
 
+                            # ИСПРАВЛЕНО: цветовая схема для русских названий
                             fig_bar = px.bar(
                                 chart_df,
                                 x='sentiment',
                                 y='count',
                                 color='sentiment',
                                 color_discrete_map={
-                                    'positive': '#00CC66',
-                                    'negative': '#FF3333',
-                                    'neutral': '#FFCC00'
+                                    'положительно': '#00CC66',
+                                    'отрицательно': '#FF3333',
+                                    'нейтрально': '#FFCC00'
                                 },
                                 text='count'
                             )
@@ -181,7 +199,6 @@ if uploaded_file is not None:
                                 plot_bgcolor='white',
                                 showlegend=False
                             )
-                            # Добавляем уникальный ключ
                             st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{topic}_{i}")
 
                         # --- Цифры ---
@@ -190,7 +207,8 @@ if uploaded_file is not None:
                             st.metric("Всего отзывов", total_reviews)
                             st.write("---")
 
-                            icon_map = {'positive': '🟢', 'neutral': '⚪', 'negative': '🔴'}
+                            # ИСПРАВЛЕНО: иконки для русских названий
+                            icon_map = {'положительно': '🟢', 'нейтрально': '⚪', 'отрицательно': '🔴'}
 
                             for row in chart_data:
                                 st.metric(
@@ -202,9 +220,10 @@ if uploaded_file is not None:
                         # --- Ключевые аспекты ---
                         st.subheader("📝 Ключевые аспекты")
 
-                        positive_aspects = topic_data[topic_data["sentiment"] == "positive"]["text"].head(3)
-                        neutral_aspects = topic_data[topic_data["sentiment"] == "neutral"]["text"].head(3)
-                        negative_aspects = topic_data[topic_data["sentiment"] == "negative"]["text"].head(3)
+                        # ИСПРАВЛЕНО: фильтрация по русским названиям
+                        positive_aspects = topic_data[topic_data["sentiment"] == "положительно"]["text"].head(3)
+                        neutral_aspects = topic_data[topic_data["sentiment"] == "нейтрально"]["text"].head(3)
+                        negative_aspects = topic_data[topic_data["sentiment"] == "отрицательно"]["text"].head(3)
 
                         col4, col5, col6 = st.columns(3)
 
@@ -278,30 +297,39 @@ if uploaded_file is not None:
                                 .unstack(fill_value=0)
                             )
                             
-                            # Заполняем отсутствующие колонки
-                            for sentiment in ['positive', 'neutral', 'negative']:
+                            # ИСПРАВЛЕНО: заполняем отсутствующие колонки с русскими названиями
+                            for sentiment in ['положительно', 'нейтрально', 'отрицательно']:
                                 if sentiment not in monthly_sentiment.columns:
                                     monthly_sentiment[sentiment] = 0
 
                             monthly_total = monthly_sentiment.sum(axis=1)
                             monthly_percent = (monthly_sentiment.div(monthly_total, axis=0) * 100).fillna(0)
 
-                            for sentiment in ['positive', 'neutral', 'negative']:
+                            # ИСПРАВЛЕНО: цветовая схема для русских названий
+                            color_map = {
+                                'положительно': '#00CC66',
+                                'нейтрально': '#FFCC00', 
+                                'отрицательно': '#FF3333'
+                            }
+                            
+                            for sentiment in ['положительно', 'нейтрально', 'отрицательно']:
                                 fig_tonality.add_trace(
                                     go.Scatter(
                                         x=monthly_percent.index,
                                         y=monthly_percent[sentiment],
-                                        name=f"{topic} - {sentiment}",
+                                        name=f"{sentiment}",
                                         mode='lines+markers',
-                                        legendgroup=topic,
+                                        line=dict(color=color_map[sentiment]),
+                                        legendgroup=sentiment,
                                         showlegend=(i == 1)
                                     ),
                                     row=i, col=1
                                 )
 
-                    fig_tonality.update_layout(height=300 * len(selected_topics),
-                                               title_text="Динамика долей тональностей")
-                    # Добавляем уникальный ключ
+                    fig_tonality.update_layout(
+                        height=300 * len(selected_topics),
+                        title_text="Динамика долей тональностей"
+                    )
                     st.plotly_chart(fig_tonality, use_container_width=True, key="tonality_dynamic")
 
                     # --- Динамика количества ---
@@ -309,7 +337,9 @@ if uploaded_file is not None:
 
                     fig_volume = go.Figure()
 
-                    for topic in selected_topics:
+                    color_cycle = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
+                    
+                    for j, topic in enumerate(selected_topics):
                         topic_str = str(topic)
                         topic_time_data = time_data[time_data["topic"].astype(str) == topic_str]
 
@@ -321,7 +351,8 @@ if uploaded_file is not None:
                                     x=monthly_counts.index,
                                     y=monthly_counts.values,
                                     name=topic,
-                                    mode='lines+markers'
+                                    mode='lines+markers',
+                                    line=dict(color=color_cycle[j % len(color_cycle)])
                                 )
                             )
 
@@ -330,7 +361,6 @@ if uploaded_file is not None:
                         yaxis_title="Количество отзывов",
                         title="Динамика абсолютного числа упоминаний"
                     )
-                    # Добавляем уникальный ключ
                     st.plotly_chart(fig_volume, use_container_width=True, key="volume_dynamic")
 
                     # --- Сводная таблица ---
@@ -341,8 +371,8 @@ if uploaded_file is not None:
                         .size()
                         .unstack(fill_value=0)
                     )
-                    # Заполняем отсутствующие колонки
-                    for sentiment in ['positive', 'neutral', 'negative']:
+                    # ИСПРАВЛЕНО: заполняем отсутствующие колонки с русскими названиями
+                    for sentiment in ['положительно', 'нейтрально', 'отрицательно']:
                         if sentiment not in pivot_table.columns:
                             pivot_table[sentiment] = 0
                     
@@ -352,5 +382,6 @@ if uploaded_file is not None:
             st.error("Не удалось получить предсказания от API.")
     except Exception as e:
         st.error(f"Ошибка при загрузке файла: {e}")
+        st.error(f"Тип ошибки: {type(e).__name__}")
 else:
     st.info("Пожалуйста, загрузите файл с отзывами в формате JSON.")
