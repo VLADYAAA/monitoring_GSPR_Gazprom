@@ -7,27 +7,37 @@ import requests
 import json
 from datetime import datetime, timedelta
 import random
+import time
 
 # Настройки
 st.set_page_config(page_title="Клиентские настроения", layout="wide")
 st.image("orig.png", width=120)
 st.title("Дашборд клиентских настроений и проблем")
 
+# Функция загрузки данных с кешированием
+@st.cache_data(show_spinner=False, ttl=10)  # TTL 1 час, можно уменьшить до 0 для отладки
+def load_data(uploaded_file):
+    try:
+        reviews_data = json.load(uploaded_file)
+        return reviews_data
+    except Exception as e:
+        st.error(f"Ошибка при загрузке файла: {e}")
+        return None
+
 # Загрузка данных пользователем
 uploaded_file = st.file_uploader("Загрузите JSON с отзывами", type="json")
 
 if uploaded_file is not None:
-    try:
-        reviews_data = json.load(uploaded_file)
-
+    reviews_data = load_data(uploaded_file)
+    
+    if reviews_data:
         # Создаем DataFrame из загруженных данных
         reviews_df = pd.DataFrame(reviews_data["data"])
-
+        
         # Добавляем случайные даты для демонстрации временного интервала
         start_date = datetime(2024, 1, 1)
         end_date = datetime(2025, 5, 31)
         date_range = (end_date - start_date).days
-
         reviews_df['date'] = [
             start_date + timedelta(days=random.randint(0, date_range))
             for _ in range(len(reviews_df))
@@ -44,7 +54,7 @@ if uploaded_file is not None:
                 return None
 
         predictions_data = fetch_predictions(reviews_data)
-
+        
         if predictions_data:
             # Преобразование предсказаний
             flat_data = []
@@ -56,24 +66,23 @@ if uploaded_file is not None:
                         "sentiment": sentiment
                     })
             flat_df = pd.DataFrame(flat_data)
-
+            
             # Объединение с отзывами
             merged_df = reviews_df.merge(flat_df, on="id", how="left")
-
+            
             # Боковая панель с фильтрами
             st.sidebar.header("🔧 Фильтры")
-
+            
             # Временной интервал
             min_date = merged_df["date"].min().date()
             max_date = merged_df["date"].max().date()
-
             date_range = st.sidebar.date_input(
                 "Выберите временной интервал:",
                 value=(min_date, max_date),
                 min_value=min_date,
                 max_value=max_date
             )
-
+            
             if len(date_range) == 2:
                 start_date_filter, end_date_filter = date_range
                 filtered_df = merged_df[
@@ -96,45 +105,42 @@ if uploaded_file is not None:
                 st.metric("Всего отзывов", len(filtered_df))
             with col3:
                 st.metric("Период", f"{date_range[0]} - {date_range[1]}")
-
             st.write("**Обнаруженные темы:**", ", ".join(topics))
 
             # 2. Детальная статистика по каждому продукту/услуге
             st.header("📊 Анализ по продуктам/услугам")
-
+            
             for i, topic in enumerate(topics):
                 with st.expander(f"🔍 {topic}", expanded=False):
                     # Преобразуем topic обратно в строку для фильтрации
                     topic_str = str(topic)
                     topic_data = filtered_df[filtered_df["topic"].astype(str) == topic_str]
                     total_reviews = len(topic_data)
-
+                    
                     if total_reviews > 0:
-                        # ИСПРАВЛЕНИЕ: Правильно рассчитываем распределение тональностей для КОНКРЕТНОЙ ТЕМЫ
-                        sentiment_counts = topic_data["sentiment"].value_counts()
-
-                        chart_data = []
-                        for sentiment in ['positive', 'neutral', 'negative']:
-                            count = sentiment_counts.get(sentiment, 0)
-                            percent = round((count / total_reviews) * 100, 1) if total_reviews > 0 else 0
-                            chart_data.append({
-                                'sentiment': sentiment,
-                                'count': count,
-                                'percent': percent
-                            })
-
-                        chart_df = pd.DataFrame(chart_data)
-
+                        # Получаем актуальные данные для этой темы
+                        sentiment_counts_topic = topic_data["sentiment"].value_counts()
+                        
                         col1, col2, col3 = st.columns(3)
-
+                        
                         # --- Pie chart ---
                         with col1:
                             st.subheader("Процентное распределение")
-
-                            # ИСПРАВЛЕНИЕ: Используем chart_df который содержит данные по конкретной теме
-                            pie_df = chart_df[chart_df['count'] > 0]
-
-                            if not pie_df.empty:
+                            
+                            # Создаем данные для круговой диаграммы
+                            pie_data = []
+                            for sentiment in ['positive', 'neutral', 'negative']:
+                                count = sentiment_counts_topic.get(sentiment, 0)
+                                if count > 0:
+                                    percent = round((count / total_reviews) * 100, 1)
+                                    pie_data.append({
+                                        'sentiment': sentiment,
+                                        'count': count,
+                                        'percent': percent
+                                    })
+                            
+                            if pie_data:
+                                pie_df = pd.DataFrame(pie_data)
                                 fig_pie = px.pie(
                                     pie_df,
                                     values='count',
@@ -151,18 +157,32 @@ if uploaded_file is not None:
                                     textinfo='label+percent',
                                     hovertemplate='<b>%{label}</b><br>Количество: %{value}<br>Доля: %{percent}'
                                 )
-                                # Добавляем уникальный ключ
-                                st.plotly_chart(fig_pie, use_container_width=True, key=f"pie_{topic}_{i}")
+                                # Добавляем уникальный параметр для обновления
+                                fig_pie.update_layout(
+                                    uirevision=str(datetime.now())
+                                )
+                                # Уникальный ключ
+                                unique_key = f"pie_{topic}_{i}_{datetime.now().strftime('%H%M%S')}"
+                                st.plotly_chart(fig_pie, use_container_width=True, key=unique_key)
                             else:
                                 st.info("Нет данных для диаграммы")
 
                         # --- Bar chart ---
                         with col2:
                             st.subheader("Абсолютное распределение")
-
-                            # ИСПРАВЛЕНИЕ: Используем chart_df который содержит данные по конкретной теме
+                            
+                            # Создаем данные для столбчатой диаграммы
+                            bar_data = []
+                            for sentiment in ['positive', 'neutral', 'negative']:
+                                count = sentiment_counts_topic.get(sentiment, 0)
+                                bar_data.append({
+                                    'sentiment': sentiment,
+                                    'count': count
+                                })
+                            
+                            bar_df = pd.DataFrame(bar_data)
                             fig_bar = px.bar(
-                                chart_df,
+                                bar_df,
                                 x='sentiment',
                                 y='count',
                                 color='sentiment',
@@ -181,35 +201,36 @@ if uploaded_file is not None:
                                 xaxis_title="Тональность",
                                 yaxis_title="Количество",
                                 plot_bgcolor='white',
-                                showlegend=False
+                                showlegend=False,
+                                # Добавляем уникальный параметр для обновления
+                                uirevision=str(datetime.now())
                             )
-                            # Добавляем уникальный ключ
-                            st.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{topic}_{i}")
+                            unique_key = f"bar_{topic}_{i}_{datetime.now().strftime('%H%M%S')}"
+                            st.plotly_chart(fig_bar, use_container_width=True, key=unique_key)
 
                         # --- Цифры ---
                         with col3:
                             st.subheader("Статистика")
                             st.metric("Всего отзывов", total_reviews)
                             st.write("---")
-
                             icon_map = {'positive': '🟢', 'neutral': '⚪', 'negative': '🔴'}
-
-                            for row in chart_data:
+                            
+                            for sentiment in ['positive', 'neutral', 'negative']:
+                                count = sentiment_counts_topic.get(sentiment, 0)
+                                percent = round((count / total_reviews) * 100, 1) if total_reviews > 0 else 0
                                 st.metric(
-                                    label=f"{icon_map[row['sentiment']]} {row['sentiment'].capitalize()}",
-                                    value=f"{row['count']} отзывов",
-                                    delta=f"{row['percent']}%"
+                                    label=f"{icon_map[sentiment]} {sentiment.capitalize()}",
+                                    value=f"{count} отзывов",
+                                    delta=f"{percent}%"
                                 )
 
                         # --- Ключевые аспекты ---
                         st.subheader("📝 Ключевые аспекты")
-
                         positive_aspects = topic_data[topic_data["sentiment"] == "positive"]["text"].head(3)
                         neutral_aspects = topic_data[topic_data["sentiment"] == "neutral"]["text"].head(3)
                         negative_aspects = topic_data[topic_data["sentiment"] == "negative"]["text"].head(3)
-
+                        
                         col4, col5, col6 = st.columns(3)
-
                         with col4:
                             st.write("**✅ Что нравится:**")
                             if len(positive_aspects) > 0:
@@ -217,7 +238,6 @@ if uploaded_file is not None:
                                     st.write(f"• {text}")
                             else:
                                 st.write("Нет положительных отзывов")
-
                         with col5:
                             st.write("**⚪ Нейтральные отзывы:**")
                             if len(neutral_aspects) > 0:
@@ -225,7 +245,6 @@ if uploaded_file is not None:
                                     st.write(f"• {text}")
                             else:
                                 st.write("Нет нейтральных отзывов")
-
                         with col6:
                             st.write("**❌ Что не нравится:**")
                             if len(negative_aspects) > 0:
@@ -233,20 +252,18 @@ if uploaded_file is not None:
                                     st.write(f"• {text}")
                             else:
                                 st.write("Нет отрицательных отзывов")
-
                     else:
                         st.info("Нет отзывов по данной теме за выбранный период")
 
             # --- Динамика во времени ---
             st.header("📈 Динамика во времени")
-
             selected_topics = st.multiselect(
                 "Выберите темы для анализа динамики:",
                 options=topics,
                 default=topics[:2] if len(topics) >= 2 else topics,
                 key="topic_selector"
             )
-
+            
             if selected_topics:
                 # Преобразуем selected_topics в строки для фильтрации
                 selected_topics_str = [str(topic) for topic in selected_topics]
@@ -255,7 +272,7 @@ if uploaded_file is not None:
                 # Создаем месяц в правильном формате для сортировки
                 time_data['month'] = time_data['date'].dt.strftime('%Y-%m')
                 time_data = time_data.sort_values('date')
-
+                
                 # --- Динамика тональностей ---
                 st.subheader("Динамика тональностей по продуктам")
                 
@@ -266,11 +283,10 @@ if uploaded_file is not None:
                         subplot_titles=[f"{topic}" for topic in selected_topics],
                         vertical_spacing=0.1
                     )
-
+                    
                     for i, topic in enumerate(selected_topics, 1):
                         topic_str = str(topic)
                         topic_time_data = time_data[time_data["topic"].astype(str) == topic_str]
-
                         if not topic_time_data.empty:
                             # Группируем по месяцам без сортировки (уже отсортированы по дате)
                             monthly_sentiment = (
@@ -284,10 +300,9 @@ if uploaded_file is not None:
                             for sentiment in ['positive', 'neutral', 'negative']:
                                 if sentiment not in monthly_sentiment.columns:
                                     monthly_sentiment[sentiment] = 0
-
                             monthly_total = monthly_sentiment.sum(axis=1)
                             monthly_percent = (monthly_sentiment.div(monthly_total, axis=0) * 100).fillna(0)
-
+                            
                             for sentiment in ['positive', 'neutral', 'negative']:
                                 fig_tonality.add_trace(
                                     go.Scatter(
@@ -300,24 +315,23 @@ if uploaded_file is not None:
                                     ),
                                     row=i, col=1
                                 )
-
-                    fig_tonality.update_layout(height=300 * len(selected_topics),
-                                               title_text="Динамика долей тональностей")
-                    # Добавляем уникальный ключ
+                    
+                    fig_tonality.update_layout(
+                        height=300 * len(selected_topics),
+                        title_text="Динамика долей тональностей",
+                        uirevision=str(datetime.now())  # Добавляем уникальный параметр
+                    )
                     st.plotly_chart(fig_tonality, use_container_width=True, key="tonality_dynamic")
 
                     # --- Динамика количества ---
                     st.subheader("Динамика количества отзывов")
-
                     fig_volume = go.Figure()
-
+                    
                     for topic in selected_topics:
                         topic_str = str(topic)
                         topic_time_data = time_data[time_data["topic"].astype(str) == topic_str]
-
                         if not topic_time_data.empty:
                             monthly_counts = topic_time_data.groupby('month').size()
-
                             fig_volume.add_trace(
                                 go.Scatter(
                                     x=monthly_counts.index,
@@ -326,13 +340,13 @@ if uploaded_file is not None:
                                     mode='lines+markers'
                                 )
                             )
-
+                    
                     fig_volume.update_layout(
                         xaxis_title="Месяц",
                         yaxis_title="Количество отзывов",
-                        title="Динамика абсолютного числа упоминаний"
+                        title="Динамика абсолютного числа упоминаний",
+                        uirevision=str(datetime.now())  # Добавляем уникальный параметр
                     )
-                    # Добавляем уникальный ключ
                     st.plotly_chart(fig_volume, use_container_width=True, key="volume_dynamic")
 
                     # --- Сводная таблица ---
@@ -349,10 +363,7 @@ if uploaded_file is not None:
                             pivot_table[sentiment] = 0
                     
                     st.dataframe(pivot_table)
-
         else:
             st.error("Не удалось получить предсказания от API.")
-    except Exception as e:
-        st.error(f"Ошибка при загрузке файла: {e}")
 else:
     st.info("Пожалуйста, загрузите файл с отзывами в формате JSON.")
